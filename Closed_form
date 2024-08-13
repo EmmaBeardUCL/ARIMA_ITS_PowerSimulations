@@ -1,0 +1,22 @@
+predict_power <- function(beta1, t, sd_white_noise) {
+  # Coefficients
+  intercept <- 2.88
+  coef_t<- 0.012
+  coef_log_beta1 <- 4.164
+  coef_sd_white_noise <- -2.869
+  
+  # Calculate the linear predictor
+  eta <- intercept + coef_log_beta1 * log(beta1) + coef_t * t - coef_sd_white_noise * sd_white_noise
+  
+  # Apply the inverse logit function
+  power <- 1 / (1 + exp(-eta))
+  
+  return(power)
+}
+
+# Example usage
+beta1 <- 0.1  # Example value for beta1
+t <- 20       # Example value for t
+sd_white_noise <- 1  # Example value for SD of white noise
+predicted_power <- predict_power(beta1, t, sd_white_noise)
+print(predicted_power)
