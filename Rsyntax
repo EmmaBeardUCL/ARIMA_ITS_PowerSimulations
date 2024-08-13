@@ -1,7 +1,15 @@
-sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), period = 0, k, b0 = 0, b1_step = 0, b2_covariate = 0, b2_mean = 0, b2_sd = 1, noise_sd = 0, b3_trend = 0, plot_data = FALSE) {
+sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), period = 0, k, 
+                      b0 = 0, b1_step = 0, b2_covariate = 0, b2_mean = 0, b2_sd = 1, 
+                      noise_sd = 0, b3_trend = 0, plot_data = FALSE, seed = NULL) {
+  
   if (!require(TSA)) {
     install.packages("TSA", dependencies = TRUE)
     library(TSA)
+  }
+  
+  # Set seed for reproducibility if provided
+  if (!is.null(seed)) {
+    set.seed(seed)
   }
   
   # Initialize vectors to store simulation results
@@ -53,7 +61,6 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
     iv <- ts(fake.data.n$x1, frequency = period, start = c(0, 1))  # Intervention variable
     covariate <- ts(fake.data.n$x2, frequency = period, start = c(0, 1))  # New covariate
     time <- ts(fake.data.n$time, frequency = period, start = c(0, 1))  # Time variable
-    
     
     # Fit the ARIMAX model with intervention, and optionally covariate and time
     model1 <- tryCatch({
