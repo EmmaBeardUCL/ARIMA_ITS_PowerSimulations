@@ -1,0 +1,139 @@
+sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), period = 0, k, b0 = 0, b1_step = 0, b2_covariate = 0, b2_mean = 0, b2_sd = 1, noise_sd = 0, b3_trend = 0, plot_data = FALSE) {
+  if (!require(TSA)) {
+    install.packages("TSA", dependencies = TRUE)
+    library(TSA)
+  }
+  
+  # Initialize vectors to store simulation results
+  n.sims <- 1000  # Number of simulations
+  signif <- rep(FALSE, n.sims)
+  theta <- rep(NA, n.sims)
+  pvalue <- rep(NA, n.sims)
+  b2_estimates <- rep(NA, n.sims)
+  time_coefficients <- rep(NA, n.sims)
+  
+  # Function to generate fake data
+  fake.data <- function(t, errormodel, k, b0, b1_step, b2_covariate, b2_mean, b2_sd, noise_sd, b3_trend) {
+    x1 <- c(rep(0, k), rep(1, t - k))  # Intervention indicator
+    x2 <- rnorm(t, mean = b2_mean, sd = b2_sd)  # New covariate
+    time <- 1:t  # Time variable
+    
+    # Generate autocorrelated errors
+    e <- rnorm(t, sd = noise_sd)
+    e.start <- rnorm(t * 0.8, sd = noise_sd)  # Burn-in period
+    
+    # Simulate the time series with the specified ARIMA model
+    error <- arima.sim(model = errormodel, n = t, innov = e, start.innov = e.start)
+    
+    # Generate the b3 component
+    b3_component <- b3_trend * time
+    
+    # Generate the output series
+    y <- b0 + (b1_step * x1) + (b2_covariate * x2) + b3_component + error
+    
+    datareturn <- data.frame(time = time, x1 = x1, x2 = x2, y = y)
+    return(datareturn)
+  }
+  
+  # Set up a progress bar
+  pb <- txtProgressBar(style = 3)
+  
+  for (v in 1:n.sims) {
+    Sys.sleep(0.5)
+    setTxtProgressBar(pb, v / n.sims)
+    
+    # Generate fake data
+    fake.data.n <- fake.data(t, errormodel, k, b0, b1_step, b2_covariate, b2_mean, b2_sd, noise_sd, b3_trend)
+    
+    # Extract order from the model specification
+    order <- errormodel$order
+    
+    # Create time series objects
+    dv <- ts(fake.data.n$y, frequency = period, start = c(0, 1))  
+    iv <- ts(fake.data.n$x1, frequency = period, start = c(0, 1))  # Intervention variable
+    covariate <- ts(fake.data.n$x2, frequency = period, start = c(0, 1))  # New covariate
+    time <- ts(fake.data.n$time, frequency = period, start = c(0, 1))  # Time variable
+    
+    
+    # Fit the ARIMAX model with intervention, and optionally covariate and time
+    model1 <- tryCatch({
+      if (b2_covariate > 0 || b3_trend > 0) {
+        arima(dv, 
+              order = c(order[1], order[2], order[3]),  # ARIMA model order without seasonal component
+              xreg = cbind(iv, covariate, time), 
+              optim.control = list(maxit = 1000), 
+              include.mean = TRUE)
+      } else {
+        arima(dv, 
+              order = c(order[1], order[2], order[3]),  # ARIMA model order without seasonal component
+              xreg = iv, 
+              optim.control = list(maxit = 1000), 
+              include.mean = TRUE)
+      }
+    }, error = function(e) return(NULL))
+    
+    # Proceed only if the model fits successfully
+    if (!is.null(model1)) {
+      # Extract and store the coefficients
+      coef_names <- names(model1$coef)
+      iv_name <- ifelse("iv" %in% coef_names, "iv", "xreg")
+      theta[v] <- round(model1$coef[iv_name], 3)
+      
+      if (b2_covariate > 0) {
+        b2_estimates[v] <- round(model1$coef["covariate"], 3)
+      }
+      
+      if (b3_trend > 0) {
+        time_coefficients[v] <- round(model1$coef["time"], 3)
+      }
+      
+      # Calculate p-values
+      coef <- model1$coef
+      suppressWarnings(pval <- (1 - pnorm(abs(coef) / sqrt(diag(model1$var.coef)))) * 2)
+      pval[is.nan(pval)] <- 1
+      pvalue[v] <- round(pval[iv_name], 3)
+      signif[v] <- pvalue[v] < 0.05
+      
+      # Plot data if plot_data is TRUE
+      if (plot_data) {
+        # Adjust margins to make space for the legend
+        par(mar = c(5, 4, 4, 8), xpd=FALSE)
+        
+        # Determine the scaling factors for the intervention and covariate lines
+        y_range <- range(fake.data.n$y, na.rm = TRUE)
+        x1_range <- range(fake.data.n$x1, na.rm = TRUE)
+        x2_range <- range(fake.data.n$x2, na.rm = TRUE)
+        
+        # Plot the main y data
+        plot(fake.data.n$time, fake.data.n$y, type = "l", col = "blue", xlab = "Time", ylab = "Value", 
+             main = paste("Simulation", v), ylim = range(c(y_range, x1_range, x2_range * sd(fake.data.n$y) / sd(fake.data.n$x2)), na.rm = TRUE))
+        
+        # Add lines for the intervention variable, scaled to fit within the y-axis range
+        abline(v = k, col = "red", lty = 2)
+        
+        # Add lines for the covariate, scaled to fit within the y-axis range
+        lines(fake.data.n$time, fake.data.n$x2, col = "green", lty = 3)
+        
+        # Add a legend with proper margins
+        legend("topright", inset = c(-0.3, 0), legend = c("y", "Intervention", "Covariate"), 
+               col = c("blue", "red", "green"), lty = c(1, 2, 3), xpd = TRUE, cex = 0.5)
+        
+        Sys.sleep(1)  # Pause to view the plot
+      }
+    }
+  }
+  
+  # Close the progress bar
+  Sys.sleep(1)
+  close(pb)
+  
+  # Summarize results
+  results <- list(
+    power = mean(signif, na.rm = TRUE),
+    beta_iv = mean(theta, na.rm = TRUE),
+    beta_covariate = if (b2_covariate > 0) mean(b2_estimates, na.rm = TRUE) else NA,
+    beta_time = if (b3_trend > 0) mean(time_coefficients, na.rm = TRUE) else NA,
+    pvalue = mean(pvalue, na.rm = TRUE)
+  )
+  print(results)
+}
