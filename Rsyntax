@@ -78,7 +78,7 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
     return(TRUE)
   }
   
-  # --- Generate Fake Data ---
+  # --- Generate Data ---
   fake.data <- function(t, errormodel, k, b0, b1_step, b2_covariate, b2_mean, b2_sd, noise_sd, b3_trend) {
     # Validate ARIMA order
     check_order_validity(errormodel$order[1], errormodel$order[2], errormodel$order[3])
@@ -118,7 +118,7 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
   for (v in 1:n.sims) {
     setTxtProgressBar(pb, v) # Update progress bar
     
-    # Generate fake data for the current simulation
+    # Generate data for the current simulation
     fake.data.n <- fake.data(t, errormodel, k, b0, b1_step, b2_covariate, b2_mean, b2_sd, noise_sd, b3_trend)
     
     # Extract order from the model specification
