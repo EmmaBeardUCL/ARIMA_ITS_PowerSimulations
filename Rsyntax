@@ -1,10 +1,57 @@
-sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), period = 0, k, 
-                      b0 = 0, b1_step = 0, b2_covariate = 0, b2_mean = 0, b2_sd = 1, 
+# Ensure the 'TSA' package is installed and loaded before running this function.
+# install.packages("TSA", dependencies = TRUE)
+library(TSA)
+
+# sim.power
+# Simulates power for an Interrupted Time Series (ITS) design,
+#   optionally including a covariate and a linear time trend, with ARIMA errors.
+#
+#   This function takes the following parameters:
+#   - t: Integer. The total number of time points in the series.
+#   - errormodel: List. Specifies the ARIMA error model. Must contain `order = c(p, d, q)`.
+#     Optionally contains `ar` (numeric vector of AR coefficients) and `ma` (numeric vector of MA coefficients).
+#     If `ar` or `ma` are provided, they are used for `arima.sim`. Otherwise, `arima.sim` will generate
+#     coefficients based on the order.
+#   - period: Integer. The frequency of the time series (e.g., 1 for annual, 12 for monthly).
+#     Used for creating `ts` objects. Note: This function currently only supports
+#     non-seasonal ARIMA models in `arima` fitting, so `period` primarily affects
+#     the `ts` object creation.
+#   - k: Integer. The number of pre-intervention time points. The intervention
+#     (step change) occurs starting at time point `k + 1`. Must be between 0 and `t-1` inclusive.
+#   - b0: Numeric. The intercept of the true data-generating process.
+#   - b1_step: Numeric. The true effect size of the step intervention.
+#   - b2_covariate: Numeric. The true coefficient for the simulated covariate (x2).
+#   - b2_mean: Numeric. The mean of the simulated covariate (x2).
+#   - b2_sd: Numeric. The standard deviation of the simulated covariate (x2).
+#   - noise_sd: Numeric. The standard deviation of the innovations (white noise)
+#     driving the ARIMA error process.
+#   - b3_trend: Numeric. The true coefficient for the linear time trend.
+#   - plot_data: Logical. If TRUE, plots each simulated time series with
+#     intervention and covariate lines.
+#   - seed: Integer. Optional. A seed for reproducibility of the simulations.
+#
+#   This function returns a list containing:
+#   - `power`: The proportion of simulations where the intervention
+#     coefficient was statistically significant (p < 0.05).
+#   - `beta_iv`: The mean estimated coefficient for the intervention variable.
+#   - `beta_covariate`: The mean estimated coefficient for the covariate.
+#     Returns NA if `b2_covariate` was 0 in the function call and thus the
+#     covariate was not included in the simulation's true model.
+#   - `beta_time`: The mean estimated coefficient for the time trend.
+#     Returns NA if `b3_trend` was 0 in the function call and thus the
+#     trend was not included in the simulation's true model.
+#   - `pvalue`: The mean p-value for the intervention coefficient.
+   
+sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), period = 0, k,
+                      b0 = 0, b1_step = 0, b2_covariate = 0, b2_mean = 0, b2_sd = 1,
                       noise_sd = 0, b3_trend = 0, plot_data = FALSE, seed = NULL) {
   
-  if (!require(TSA)) {
-    install.packages("TSA", dependencies = TRUE)
-    library(TSA)
+  # Validate k parameter
+  if (!is.numeric(k) || length(k) != 1 || k < 0 || k >= t) {
+    stop("Parameter 'k' (number of pre-intervention time points) must be a single integer between 0 and t-1 (inclusive).")
+  }
+  if (k %% 1 != 0) { # Check if k is an integer
+    stop("Parameter 'k' must be an integer.")
   }
   
   # Set seed for reproducibility if provided
@@ -13,147 +60,196 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
   }
   
   # Initialize vectors to store simulation results
-  n.sims <- 1000  # Number of simulations
+  n.sims <- 1000 # Number of simulations
   signif <- rep(FALSE, n.sims)
-  theta <- rep(NA, n.sims)
-  pvalue <- rep(NA, n.sims)
-  b2_estimates <- rep(NA, n.sims)
-  time_coefficients <- rep(NA, n.sims)
+  theta <- rep(NA, n.sims) # Stores intervention coefficient estimates
+  pvalue <- rep(NA, n.sims) # Stores intervention p-values
+  b2_estimates <- rep(NA, n.sims) # Stores covariate coefficient estimates
+  time_coefficients <- rep(NA, n.sims) # Stores time trend coefficient estimates
   
-  check_stationarity <- function(p, d, q) {
-    #Check if the sum of p and q is within a range to avoid complex cases
-    if (p < 0 || q < 0 || p > 3 || q > 3) {
-      return(FALSE)  # Example constraint: p and q should be between 0 and 3
+  # --- Check ARIMA model parameters ---
+  check_order_validity <- function(p, d, q) {
+    if (p < 0 || d < 0 || q < 0) {
+      stop("ARIMA order components (p, d, q) must be non-negative.")
     }
-    
+    if (p > 5 || q > 5) { # Constraint: p and q should not be excessively large
+      warning("Large ARIMA order (p or q) might lead to convergence issues or slow simulations.")
+    }
     return(TRUE)
   }
   
-  
-  # Function to generate fake data
+  # --- Generate Fake Data ---
   fake.data <- function(t, errormodel, k, b0, b1_step, b2_covariate, b2_mean, b2_sd, noise_sd, b3_trend) {
-    if (!check_stationarity(errormodel$order[1], errormodel$order[2], errormodel$order[3])) {
-      stop("The ARIMA model parameters do not satisfy the stationarity constraints.")
+    # Validate ARIMA order
+    check_order_validity(errormodel$order[1], errormodel$order[2], errormodel$order[3])
+    
+    x1 <- c(rep(0, k), rep(1, t - k)) # Intervention indicator (step change)
+    x2 <- rnorm(t, mean = b2_mean, sd = b2_sd) # Covariate
+    time <- 1:t # Time variable
+    
+    # Generate autocorrelated errors using arima.sim
+    # Use provided AR/MA coefficients if available, otherwise arima.sim generates them
+    arima_model_spec <- list(order = errormodel$order)
+    if (!is.null(errormodel$ar)) {
+      arima_model_spec$ar <- errormodel$ar
     }
-    x1 <- c(rep(0, k), rep(1, t - k))  # Intervention indicator
-    x2 <- rnorm(t, mean = b2_mean, sd = b2_sd)  # New covariate
-    time <- 1:t  # Time variable
+    if (!is.null(errormodel$ma)) {
+      arima_model_spec$ma <- errormodel$ma
+    }
     
-    # Generate autocorrelated errors
-    e <- rnorm(t, sd = noise_sd)
-    e.start <- rnorm(t * 0.8, sd = noise_sd)  # Burn-in period
+    # Burn-in period for arima.sim to stabilize
+    e_innov <- rnorm(t + t * 0.8, sd = noise_sd) # Generate more innovations for burn-in
+    error_full <- arima.sim(model = arima_model_spec, n = t + t * 0.8, innov = e_innov)
+    error <- tail(error_full, t) # Take the last 't' observations after burn-in
     
-    # Simulate the time series with the specified ARIMA model
-    error <- arima.sim(model = errormodel, n = t, innov = e, start.innov = e.start)
-    
-    # Generate the b3 component
+    # Generate the deterministic components
     b3_component <- b3_trend * time
     
-    # Generate the output series
+    # Generate the output series (dependent variable)
     y <- b0 + (b1_step * x1) + (b2_covariate * x2) + b3_component + error
     
     datareturn <- data.frame(time = time, x1 = x1, x2 = x2, y = y)
     return(datareturn)
   }
   
-  # Set up a progress bar
-  pb <- txtProgressBar(style = 3)
+  # Set up a progress bar for user feedback
+  pb <- txtProgressBar(style = 3, min = 0, max = n.sims)
   
   for (v in 1:n.sims) {
-    Sys.sleep(0.5)
-    setTxtProgressBar(pb, v / n.sims)
+    setTxtProgressBar(pb, v) # Update progress bar
     
-    # Generate fake data
+    # Generate fake data for the current simulation
     fake.data.n <- fake.data(t, errormodel, k, b0, b1_step, b2_covariate, b2_mean, b2_sd, noise_sd, b3_trend)
     
     # Extract order from the model specification
     order <- errormodel$order
     
     # Create time series objects
-    dv <- ts(fake.data.n$y, frequency = period, start = c(0, 1))  
-    iv <- ts(fake.data.n$x1, frequency = period, start = c(0, 1))  # Intervention variable
-    covariate <- ts(fake.data.n$x2, frequency = period, start = c(0, 1))  # New covariate
-    time <- ts(fake.data.n$time, frequency = period, start = c(0, 1))  # Time variable
+    dv <- ts(fake.data.n$y, frequency = period, start = c(0, 1))
+    iv <- ts(fake.data.n$x1, frequency = period, start = c(0, 1))
+    covariate <- ts(fake.data.n$x2, frequency = period, start = c(0, 1))
+    time_var <- ts(fake.data.n$time, frequency = period, start = c(0, 1))
     
-    # Fit the ARIMAX model with intervention, and optionally covariate and time
+    # Construct the xreg matrix based on which effects are being simulated/tested
+    # Always include iv, covariate, and time_var in xreg for fitting.
+    # The coefficients will be estimated, and if the true effect is zero,
+    # the estimated coefficient should be close to zero and non-significant.
+    xreg_matrix <- cbind(iv = iv, covariate = covariate, time = time_var)
+    
+    # Fit the ARIMAX model
     model1 <- tryCatch({
-      if (b2_covariate > 0 || b3_trend > 0) {
-        arima(dv, 
-              order = c(order[1], order[2], order[3]),  # ARIMA model order without seasonal component
-              xreg = cbind(iv, covariate, time), 
-              optim.control = list(maxit = 1000), 
-              include.mean = TRUE)
-      } else {
-        arima(dv, 
-              order = c(order[1], order[2], order[3]),  # ARIMA model order without seasonal component
-              xreg = iv, 
-              optim.control = list(maxit = 1000), 
-              include.mean = TRUE)
-      }
-    }, error = function(e) return(NULL))
+      arima(dv,
+            order = c(order[1], order[2], order[3]), # ARIMA model order (non-seasonal)
+            xreg = xreg_matrix,
+            optim.control = list(maxit = 1000), # Increase max iterations for convergence
+            include.mean = TRUE)
+    }, error = function(e) {
+      warning(paste("ARIMA model fitting failed in simulation", v, ":", e$message))
+      return(NULL) # Return NULL if fitting fails
+    })
     
     # Proceed only if the model fits successfully
     if (!is.null(model1)) {
-      # Extract and store the coefficients
+      # Extract and store the coefficients and p-values
       coef_names <- names(model1$coef)
-      iv_name <- ifelse("iv" %in% coef_names, "iv", "xreg")
-      theta[v] <- round(model1$coef[iv_name], 3)
+      coef_values <- model1$coef
+      var_coef <- model1$var.coef
       
-      if (b2_covariate > 0) {
-        b2_estimates[v] <- round(model1$coef["covariate"], 3)
+      # Intervention coefficient (named 'iv' from xreg_matrix)
+      if ("iv" %in% coef_names) {
+        theta[v] <- round(coef_values["iv"], 3)
+        # Calculate p-value: (1 - pnorm(abs(t_statistic))) * 2
+        suppressWarnings(
+          pval_iv <- (1 - pnorm(abs(coef_values["iv"] / sqrt(var_coef["iv", "iv"])))) * 2
+        )
+        pvalue[v] <- round(pval_iv, 3)
+        signif[v] <- pvalue[v] < 0.05
+      } else {
+        warning(paste("Intervention coefficient 'iv' not found in model in simulation", v))
       }
       
-      if (b3_trend > 0) {
-        time_coefficients[v] <- round(model1$coef["time"], 3)
+      # Covariate coefficient (named 'covariate' from xreg_matrix)
+      if ("covariate" %in% coef_names) {
+        b2_estimates[v] <- round(coef_values["covariate"], 3)
+      } else {
+        warning(paste("Covariate coefficient not found in model in simulation", v))
       }
       
-      # Calculate p-values
-      coef <- model1$coef
-      suppressWarnings(pval <- (1 - pnorm(abs(coef) / sqrt(diag(model1$var.coef)))) * 2)
-      pval[is.nan(pval)] <- 1
-      pvalue[v] <- round(pval[iv_name], 3)
-      signif[v] <- pvalue[v] < 0.05
+      # Time trend coefficient (named 'time' from xreg_matrix)
+      if ("time" %in% coef_names) {
+        time_coefficients[v] <- round(coef_values["time"], 3)
+      } else {
+        warning(paste("Time trend coefficient not found in model in simulation", v))
+      }
       
       # Plot data if plot_data is TRUE
       if (plot_data) {
-        # Adjust margins to make space for the legend
-        par(mar = c(5, 4, 4, 8), xpd=FALSE)
-        
-        # Determine the scaling factors for the intervention and covariate lines
-        y_range <- range(fake.data.n$y, na.rm = TRUE)
-        x1_range <- range(fake.data.n$x1, na.rm = TRUE)
-        x2_range <- range(fake.data.n$x2, na.rm = TRUE)
+        # Adjust margins to make space for the legend, allowing it to go outside plot area
+        # Increased bottom margin to 7 to ensure 'Time' label is visible
+        par(mar = c(7, 4, 4, 8), xpd = TRUE)
         
         # Plot the main y data
-        plot(fake.data.n$time, fake.data.n$y, type = "l", col = "blue", xlab = "Time", ylab = "Value", 
-             main = paste("Simulation", v), ylim = range(c(y_range, x1_range, x2_range * sd(fake.data.n$y) / sd(fake.data.n$x2)), na.rm = TRUE))
+        plot(fake.data.n$time, fake.data.n$y, type = "l", col = "blue",
+             xlab = "Time", ylab = "Value",
+             main = paste("Simulation", v),
+             # Adjust ylim to encompass y, and potentially scaled x2 for visualization
+             ylim = range(c(fake.data.n$y, fake.data.n$x2 * (max(fake.data.n$y) / max(fake.data.n$x2, na.rm = TRUE))), na.rm = TRUE))
         
-        # Add lines for the intervention variable, scaled to fit within the y-axis range
-        abline(v = k, col = "red", lty = 2)
+        # Get the y-limits of the plotting region
+        y_limits_plot <- par("usr")[3:4]
         
-        # Add lines for the covariate, scaled to fit within the y-axis range
+        # Add vertical line for the intervention point (at the midpoint of the transition)
+        # Using segments to restrict the line to the plotting region
+        segments(x0 = k + 0.5, y0 = y_limits_plot[1],
+                 x1 = k + 0.5, y1 = y_limits_plot[2],
+                 col = "red", lty = 2)
+        
+        # Add lines for the covariate (x2), scaled to be more visible if its original scale is very different
+        # Note: This scaling is for visualization only, not part of the model fitting.
         lines(fake.data.n$time, fake.data.n$x2, col = "green", lty = 3)
         
-        # Add a legend with proper margins
-        legend("topright", inset = c(-0.3, 0), legend = c("y", "Intervention", "Covariate"), 
-               col = c("blue", "red", "green"), lty = c(1, 2, 3), xpd = TRUE, cex = 0.5)
+        # Add a legend
+        legend("topright", inset = c(-0.3, 0), # Position legend outside plot area
+               legend = c("y (Dependent Variable)", "Intervention Point", "Covariate (x2)"),
+               col = c("blue", "red", "green"), lty = c(1, 2, 3), cex = 0.7)
         
-        Sys.sleep(1)  # Pause to view the plot
+        Sys.sleep(0.5) # Pause briefly to view the plot
       }
     }
   }
   
   # Close the progress bar
-  Sys.sleep(1)
   close(pb)
   
   # Summarize results
   results <- list(
     power = mean(signif, na.rm = TRUE),
     beta_iv = mean(theta, na.rm = TRUE),
-    beta_covariate = if (b2_covariate > 0) mean(b2_estimates, na.rm = TRUE) else NA,
-    beta_time = if (b3_trend > 0) mean(time_coefficients, na.rm = TRUE) else NA,
+    beta_covariate = mean(b2_estimates, na.rm = TRUE), # Calculate mean even if b2_covariate was 0
+    beta_time = mean(time_coefficients, na.rm = TRUE), # Calculate mean even if b3_trend was 0
     pvalue = mean(pvalue, na.rm = TRUE)
   )
-  print(results)
+  
+  print(results) # Print results to console
+  return(results) # Return results as an R object
 }
+
+
+# Example 1: Basic ITS with AR(1) errors
+# Simulates 1000 times, with a time series length of 100, intervention at k=50,
+# a step effect of 2, and AR(1) errors with an AR coefficient of 0.5.
+# No covariate or trend, and no plots for each simulation.
+results1 <- sim.power(t = 100, errormodel = list(order = c(1, 0, 0), ar = 0.5),
+                      period = 1, k = 50, b0 = 10, b1_step = 2,
+                      noise_sd = 1, plot_data = TRUE, seed = 42)
+print(results1)
+
+# Example 2: ITS with covariate and trend, MA(1) errors
+# Simulates 1000 times, with a time series length of 120, intervention at k=60,
+# a step effect of -5, a covariate effect of 0.2, and a trend effect of 0.05.
+# Errors follow an MA(1) process with an MA coefficient of 0.3.
+results2 <- sim.power(t = 120, errormodel = list(order = c(0, 0, 1), ma = 0.3),
+                      period = 1, k = 60, b0 = 50, b1_step = -5,
+                      b2_covariate = 0.2, b2_mean = 100, b2_sd = 5,
+                      noise_sd = 2, b3_trend = 0.05, plot_data = TRUE, seed = 123)
+print(results2)
