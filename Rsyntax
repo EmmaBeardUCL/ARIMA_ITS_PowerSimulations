@@ -125,15 +125,10 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
     order <- errormodel$order
     
     # Create time series objects
-    dv <- ts(fake.data.n$y, frequency = period, start = c(0, 1))
-    iv <- ts(fake.data.n$x1, frequency = period, start = c(0, 1))
-    covariate <- ts(fake.data.n$x2, frequency = period, start = c(0, 1))
-    time_var <- ts(fake.data.n$time, frequency = period, start = c(0, 1))
-    
-    # Construct the xreg matrix based on which effects are being simulated/tested
-    # Always include iv, covariate, and time_var in xreg for fitting.
-    # The coefficients will be estimated, and if the true effect is zero,
-    # the estimated coefficient should be close to zero and non-significant.
+    dv <- ts(fake.data.n$y, frequency = period, start = c(1, 1))
+    iv <- ts(fake.data.n$x1, frequency = period, start = c(1, 1))
+    covariate <- ts(fake.data.n$x2, frequency = period, start = c(1, 1))
+    time_var <- ts(fake.data.n$time, frequency = period, start = c(1, 1))
     xreg_matrix <- cbind(iv = iv, covariate = covariate, time = time_var)
     
     # Fit the ARIMAX model
@@ -184,31 +179,16 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
       
       # Plot data if plot_data is TRUE
       if (plot_data) {
-        # Adjust margins to make space for the legend, allowing it to go outside plot area
-        # Increased bottom margin to 7 to ensure 'Time' label is visible
         par(mar = c(7, 4, 4, 8), xpd = TRUE)
-        
-        # Plot the main y data
         plot(fake.data.n$time, fake.data.n$y, type = "l", col = "blue",
              xlab = "Time", ylab = "Value",
              main = paste("Simulation", v),
-             # Adjust ylim to encompass y, and potentially scaled x2 for visualization
              ylim = range(c(fake.data.n$y, fake.data.n$x2 * (max(fake.data.n$y) / max(fake.data.n$x2, na.rm = TRUE))), na.rm = TRUE))
-        
-        # Get the y-limits of the plotting region
         y_limits_plot <- par("usr")[3:4]
-        
-        # Add vertical line for the intervention point (at the midpoint of the transition)
-        # Using segments to restrict the line to the plotting region
         segments(x0 = k + 0.5, y0 = y_limits_plot[1],
                  x1 = k + 0.5, y1 = y_limits_plot[2],
                  col = "red", lty = 2)
-        
-        # Add lines for the covariate (x2), scaled to be more visible if its original scale is very different
-        # Note: This scaling is for visualization only, not part of the model fitting.
         lines(fake.data.n$time, fake.data.n$x2, col = "green", lty = 3)
-        
-        # Add a legend
         legend("topright", inset = c(-0.3, 0), # Position legend outside plot area
                legend = c("y (Dependent Variable)", "Intervention Point", "Covariate (x2)"),
                col = c("blue", "red", "green"), lty = c(1, 2, 3), cex = 0.7)
