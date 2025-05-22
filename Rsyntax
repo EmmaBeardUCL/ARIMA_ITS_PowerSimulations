@@ -1,41 +1,39 @@
-# Ensure the 'TSA' package is installed and loaded before running this function.
-# install.packages("TSA", dependencies = TRUE)
-library(TSA)
-
 # sim.power
 # Simulates power for an Interrupted Time Series (ITS) design,
 # optionally including a covariate and a linear time trend, with ARIMA errors.
 #
 # This function takes the following parameters:
 # - t: Integer. The total number of time points in the series.
-# - errormodel: List. Specifies the ARIMA error model. Must contain `order = c(p, d, q)`.
-#   Optionally contains `ar` (numeric vector of AR coefficients) and `ma` (numeric vector of MA coefficients).
-#   If `ar` or `ma` are provided, they are used for `arima.sim`. Otherwise, `arima.sim` will generate
+# - errormodel: List. Specifies the ARIMA error model. Must contain order = c(p, d, q).
+#   Optionally contains ar (numeric vector of AR coefficients) and ma (numeric vector of MA coefficients).
+#   If ar or ma are provided, they are used for arima.sim. Otherwise, arima.sim will generate
 #   coefficients based on the order.
 # - period: Integer. The frequency of the time series (e.g., 1 for annual, 12 for monthly).
-#   Used for creating `ts` objects. Note: This function currently only supports
-#   non-seasonal ARIMA models in `arima` fitting, so `period` primarily affects
-#   the `ts` object creation.
+#   Used for creating ts objects. Note: This function currently only supports
+#   non-seasonal ARIMA models in arima fitting, so period primarily affects
+#   the ts object creation.
 # - k: Integer. The number of pre-intervention time points. The intervention
-#   (step change) occurs starting at time point `k + 1`. Must be between 0 and `t-1` inclusive.
+#   (step change) occurs starting at time point k + 1. Must be between 0 and t-1 inclusive.
 # - b0: Numeric. The intercept of the true data-generating process.
 # - b1_step: Numeric. The true effect size of the step intervention.
 #
 # - include_covariate: Logical. If TRUE, a stochastic, time-varying covariate (x2)
 #   is simulated and included in the true data-generating process and subsequently in the fitted model.
 # - b2_covariate: Numeric. The true main effect coefficient for the simulated covariate (x2).
-#   Only considered if `include_covariate` is TRUE.
+#   Only considered if include_covariate is TRUE.
 # - b2_mean: Numeric. The mean of the simulated covariate (x2).
-#   Only considered if `include_covariate` is TRUE.
+#   Only considered if include_covariate is TRUE.
 # - b2_sd: Numeric. The standard deviation of the simulated covariate (x2).
-#   Only considered if `include_covariate` is TRUE.
+#   Only considered if include_covariate is TRUE.
+# - b2_shift_after_k: Numeric. The amount the covariate (x2) shifts after the intervention point k.
+#   Only considered if include_covariate is TRUE. Defaults to 0 (no shift).
 #
 # - include_time_trend: Logical. If TRUE, a linear time trend is simulated
 #   and included in the true data-generating process and subsequently in the fitted model.
 # - b3_trend: Numeric. The true coefficient for the linear time trend.
-#   Only considered if `include_time_trend` is TRUE.
+#   Only considered if include_time_trend is TRUE.
 #
-# - noise_sd: Numeric. The standard deviation of the innovations (white noise)
+# - noise_sd: Numeric. The standard standard deviation of the innovations (white noise)
 #   driving the ARIMA error process.
 # - plot_data: Logical. If TRUE, plots each simulated time series with
 #   intervention and covariate lines.
@@ -43,33 +41,33 @@ library(TSA)
 # - n.sims: Integer. The number of simulations to run.
 #
 # This function returns a list containing:
-# - `power`: The proportion of simulations where the intervention
-#   coefficient was statistically significant (p < 0.05).
-# - `beta_iv`: The mean estimated coefficient for the intervention variable.
-# - `beta_covariate`: The mean estimated coefficient for the covariate.
-#   Returns NA if `include_covariate` was FALSE.
-# - `beta_time`: The mean estimated coefficient for the time trend.
-#   Returns NA if `include_time_trend` was FALSE.
-# - `pvalue`: The mean p-value for the intervention coefficient.
+# - power: The proportion of simulations where the intervention
+#   coefficient was statistically statistically significant (p < 0.05).
+# - beta_iv: The mean estimated coefficient for the intervention variable.
+# - beta_covariate: The mean estimated coefficient for the covariate.
+#   Returns NA if include_covariate was FALSE.
+# - beta_time: The mean estimated coefficient for the time trend.
+#   Returns NA if include_time_trend was FALSE.
+# - pvalue: The mean p-value for the intervention coefficient.
 
 sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), period = 0, k,
                       b0 = 0, b1_step = 0,
                       include_covariate = FALSE,
-                      b2_covariate = 0, b2_mean = 0, b2_sd = 1, 
+                      b2_covariate = 0, b2_mean = 0, b2_sd = 1, b2_shift_after_k = 0, # Added b2_shift_after_k
                       include_time_trend = FALSE,
                       b3_trend = 0,
-                      noise_sd = 0, plot_data = FALSE, seed = NULL, n.sims = 1000) { 
+                      noise_sd = 0, plot_data = FALSE, seed = NULL, n.sims = 1000) {
   
   # Validate k parameter
   if (!is.numeric(k) || length(k) != 1 || k < 0 || k >= t) {
     stop("Parameter 'k' (number of pre-intervention time points) must be a single integer between 0 and t-1 (inclusive).")
   }
-  if (k %% 1 != 0) { 
+  if (k %% 1 != 0) { # Check if k is an integer
     stop("Parameter 'k' must be an integer.")
   }
   
   # Validate covariate parameters if include_covariate is TRUE
-  if (include_covariate && (b2_sd <= 0 || !is.numeric(b2_sd))) { 
+  if (include_covariate && (b2_sd <= 0 || !is.numeric(b2_sd))) { # b2_sd must be positive
     stop("If 'include_covariate' is TRUE, 'b2_sd' must be a positive numeric value.")
   }
   
@@ -80,17 +78,17 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
   
   # Initialize vectors to store simulation results
   signif <- rep(FALSE, n.sims)
-  theta <- rep(NA, n.sims)
-  pvalue <- rep(NA, n.sims) 
-  b2_estimates <- rep(NA, n.sims) 
-  time_coefficients <- rep(NA, n.sims) 
+  theta <- rep(NA, n.sims) # Stores intervention coefficient estimates
+  pvalue <- rep(NA, n.sims) # Stores intervention p-values
+  b2_estimates <- rep(NA, n.sims) # Stores covariate coefficient estimates
+  time_coefficients <- rep(NA, n.sims) # Stores time trend coefficient estimates
   
   # --- Check ARIMA model parameters ---
   check_order_validity <- function(p, d, q) {
     if (p < 0 || d < 0 || q < 0) {
       stop("ARIMA order components (p, d, q) must be non-negative.")
     }
-    if (p > 5 || q > 5) { 
+    if (p > 5 || q > 5) { # Constraint: p and q should not be excessively large
       warning("Large ARIMA order (p or q) might lead to convergence issues or slow simulations.")
     }
     return(TRUE)
@@ -98,13 +96,13 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
   
   # --- Generate Fake Data ---
   generate_fake_data <- function(t, errormodel, k, b0, b1_step,
-                                 include_covariate, b2_covariate, b2_mean, b2_sd,
+                                 include_covariate, b2_covariate, b2_mean, b2_sd, b2_shift_after_k,
                                  noise_sd, include_time_trend, b3_trend) {
     
     # Validate ARIMA order
     check_order_validity(errormodel$order[1], errormodel$order[2], errormodel$order[3])
     
-    x1 <- c(rep(0, k), rep(1, t - k)) 
+    x1 <- c(rep(0, k), rep(1, t - k)) # Intervention indicator (step change)
     
     # Initialize variables that might not be included
     time_var_component <- rep(0, t)
@@ -112,17 +110,21 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
     
     # Generate time trend if included
     if (include_time_trend) {
-      time_var_component <- 1:t 
+      time_var_component <- 1:t # Time variable
     }
     
     # Only simulate x2 if requested
     if (include_covariate) {
-      x2 <- rnorm(t, mean = b2_mean, sd = b2_sd)
+      confounder_base <- b2_mean + arima.sim(n = t, list(ar = 0.5), sd = b2_sd)
+      x2 <- confounder_base
+      if (b2_shift_after_k != 0) {
+        x2[(k + 1):t] <- x2[(k + 1):t] + b2_shift_after_k
+      }
     }
     
     # Generate autocorrelated errors using arima.sim
     arima_model_spec <- list(order = errormodel$order)
-
+    # Only add AR/MA coefficients if they are actually specified and non-zero
     if (!is.null(errormodel$ar) && any(errormodel$ar != 0)) {
       arima_model_spec$ar <- errormodel$ar
     }
@@ -135,7 +137,7 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
         (is.null(errormodel$ma) || all(errormodel$ma == 0))) {
       error <- rnorm(t, sd = noise_sd)
     } else {
-  
+      
       e_innov <- rnorm(t + t * 0.8, sd = noise_sd)
       error_full <- arima.sim(model = arima_model_spec, n = t + t * 0.8, innov = e_innov)
       error <- tail(error_full, t)
@@ -146,6 +148,7 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
       (b2_covariate * x2) +
       (b3_trend * time_var_component) + error
     
+    # Always include 'time' for plotting/reference
     data.frame(time = 1:t, x1 = x1, x2 = x2, y = y)
   }
   
@@ -153,11 +156,11 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
   pb <- txtProgressBar(style = 3, min = 0, max = n.sims)
   
   for (v in 1:n.sims) {
-    setTxtProgressBar(pb, v) 
+    setTxtProgressBar(pb, v) # Update progress bar
     
     # Generate fake data for the current simulation
     fake.data.n <- generate_fake_data(t, errormodel, k, b0, b1_step,
-                                      include_covariate, b2_covariate, b2_mean, b2_sd,
+                                      include_covariate, b2_covariate, b2_mean, b2_sd, b2_shift_after_k,
                                       noise_sd, include_time_trend, b3_trend)
     
     # Extract order from the model specification
@@ -182,18 +185,18 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
     # Fit the ARIMAX model
     model1 <- tryCatch({
       arima(dv,
-            order = c(order[1], order[2], order[3]),
-            xreg = xreg_matrix, 
-            optim.control = list(maxit = 1000), 
+            order = c(order[1], order[2], order[3]), # ARIMA model order (non-seasonal)
+            xreg = xreg_matrix, # Pass the dynamically created xreg_matrix
+            optim.control = list(maxit = 1000), # Increase max iterations for convergence
             include.mean = TRUE)
     }, error = function(e) {
       warning(paste("ARIMA model fitting failed in simulation", v, ":", e$message))
-      return(NULL) 
+      return(NULL) # Return NULL if fitting fails
     })
     
     # Proceed only if the model fits successfully
     if (!is.null(model1)) {
-
+      # Extract and store the coefficients and p-values
       coef_names <- names(model1$coef)
       coef_values <- model1$coef
       var_coef <- model1$var.coef
@@ -231,7 +234,7 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
         plot(fake.data.n$time, fake.data.n$y, type = "l", col = "blue",
              xlab = "Time", ylab = "Value",
              main = paste("Simulation", v),
-             ylim = range(c(fake.data.n$y, if(include_covariate) fake.data.n$x2 else NA), na.rm = TRUE))
+             ylim = range(c(fake.data.n$y, if(include_covariate) fake.data.n$x2 else NA), na.rm = TRUE)) # Adjust ylim to potentially include x2
         
         y_limits_plot <- par("usr")[3:4]
         
@@ -251,7 +254,7 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
         }
         
         # Add time trend line if included
-        if (include_time_trend && b3_trend != 0) {
+        if (include_time_trend && b3_trend != 0) { # Only draw if there's a non-zero trend
           # Calculate the deterministic trend component for plotting
           trend_line_values <- b0 + b3_trend * (1:t)
           lines(1:t, trend_line_values, col = "purple", lty = 4)
@@ -264,7 +267,7 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
                legend = legend_labels,
                col = legend_cols, lty = legend_ltys, cex = 0.7)
         
-        Sys.sleep(0.5) 
+        Sys.sleep(0.5) # Pause briefly to view the plot
       }
     }
   }
@@ -281,6 +284,6 @@ sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), 
     pvalue = mean(pvalue, na.rm = TRUE)
   )
   
-  print(results) 
-  return(results) 
+  print(results) # Print results to console
+  return(results) # Return results as an R object
 }
