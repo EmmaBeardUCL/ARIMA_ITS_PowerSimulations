@@ -53,7 +53,7 @@
 sim.power <- function(t, errormodel = list(order = c(0, 0, 0), ar = 0, ma = 0), period = 0, k,
                       b0 = 0, b1_step = 0,
                       include_covariate = FALSE,
-                      b2_covariate = 0, b2_mean = 0, b2_sd = 1, b2_shift_after_k = 0, # Added b2_shift_after_k
+                      b2_covariate = 0, b2_mean = 0, b2_sd = 1, b2_shift_after_k = 0, 
                       include_time_trend = FALSE,
                       b3_trend = 0,
                       noise_sd = 0, plot_data = FALSE, seed = NULL, n.sims = 1000) {
