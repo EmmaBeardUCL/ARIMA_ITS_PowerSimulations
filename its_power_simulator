@@ -89,10 +89,13 @@ its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NU
     if (v == n.sims) {
       last_fake_data <- fake.data.n
     }
-    sim_order <- errormodel$order
-    xreg_components <- list(iv = as.numeric(fake.data.n$x1))
-    if (model_covariate) {
-      xreg_components$covariate <- as.numeric(fake.data.n$x2)
+if (trend_model_method == "xreg") {
+  xreg_components$time <- as.numeric(fake.data.n$time)
+} else if (trend_model_method == "differencing") {
+  if (sim_order[2] == 0) {
+    sim_order[2] <- 1
+  }
+}
     }
     if (trend_model_method == "xreg") {
       xreg_components$time <- as.numeric(fake.data.n$time)
