@@ -1,49 +1,61 @@
-R
-
 its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NULL, ma = NULL), period = 1, k,
-                                 b0 = 0, b1_step = 0,
-                                 b2_covariate = 0, b2_mean = 0, b2_sd = 1, b2_shift_after_k = 0,
-                                 noise_sd = 0, b3_trend = 0,
-                                 include_covariate = FALSE,
-                                 model_covariate = FALSE,
-                                 include_trend = FALSE,
-                                 trend_model_method = "none",
-                                 seed = NULL, n.sims) {
+                                b0 = 0, b1_step = 0,
+                                b2_covariate = 0, b2_mean = 0, b2_sd = 1, b2_shift_after_k = 0,
+                                noise_sd = 0, b3_trend = 0,
+                                include_covariate = FALSE,
+                                model_covariate = FALSE,
+                                include_trend = FALSE,
+                                trend_model_method = "none",
+                                log_transform_outcome = FALSE,
+                                seed = NULL, n.sims) {
+  
   if (!is.numeric(k) || length(k) != 1 || k < 0 || k >= t) {
     stop("Parameter 'k' (number of pre-intervention time points) must be a single integer between 0 and t-1 (inclusive).")
   }
   if (k %% 1 != 0) {
     stop("Parameter 'k' must be an integer.")
   }
+  
   if (include_covariate && b2_sd < 0) {
     stop("If 'include_covariate' is TRUE, 'b2_sd' must be a non-negative numeric value.")
   }
+  
   if (!is.null(seed)) {
     set.seed(seed)
   }
+  
   signif <- rep(FALSE, n.sims)
   theta <- rep(NA, n.sims)
   pvalue <- rep(NA, n.sims)
   b2_estimates <- rep(NA, n.sims)
   time_coefficients <- rep(NA, n.sims)
+  
   last_fake_data <- NULL
+  
   errors_occurred <- c()
+  
   check_order_validity <- function(p, d, q) {
     if (p < 0 || d < 0 || q < 0) {
       stop("ARIMA order components (p, d, q) must be non-negative.")
     }
     return(TRUE)
   }
+  
   generate_fake_data <- function(t, errormodel, k, b0, b1_step,
                                  include_covariate, b2_covariate, b2_mean, b2_sd, b2_shift_after_k,
-                                 noise_sd, include_trend, b3_trend) {
+                                 noise_sd, include_trend, b3_trend, log_transform_outcome) {
+    
     check_order_validity(errormodel$order[1], errormodel$order[2], errormodel$order[3])
+    
     x1 <- c(rep(0, k), rep(1, t - k))
+    
     time_var_component <- rep(0, t)
     x2 <- rep(0, t)
+    
     if (include_trend) {
       time_var_component <- 1:t
     }
+    
     if (include_covariate) {
       confounder_base <- b2_mean + arima.sim(n = t, list(ar = 0.5), sd = b2_sd)
       x2 <- confounder_base
@@ -51,6 +63,7 @@ its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NU
         x2[(k + 1):t] <- x2[(k + 1):t] + b2_shift_after_k
       }
     }
+    
     arima_model_spec <- list(order = errormodel$order)
     if (!is.null(errormodel$ar) && any(!is.na(errormodel$ar)) && length(errormodel$ar) > 0) {
       arima_model_spec$ar <- errormodel$ar
@@ -58,6 +71,7 @@ its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NU
     if (!is.null(errormodel$ma) && any(!is.na(errormodel$ma)) && length(errormodel$ma) > 0) {
       arima_model_spec$ma <- errormodel$ma
     }
+    
     if (all(errormodel$order == c(0,0,0)) && (is.null(errormodel$ar) || all(errormodel$ar == 0)) && (is.null(errormodel$ma) || all(errormodel$ma == 0))) {
       error <- rnorm(t, sd = noise_sd)
     } else {
@@ -65,14 +79,23 @@ its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NU
       error_full <- arima.sim(model = arima_model_spec, n = t + t * 0.8, innov = e_innov)
       error <- tail(error_full, t)
     }
-    y <- b0 + (b1_step * x1)
+    
+    y_linear <- b0 + (b1_step * x1)
+    
     if(include_covariate){
-      y <- y + (b2_covariate * x2)
+      y_linear <- y_linear + (b2_covariate * x2)
     }
     if(include_trend){
-      y <- y + (b3_trend * time_var_component)
+      y_linear <- y_linear + (b3_trend * time_var_component)
     }
-    y <- y + error
+    y_linear <- y_linear + error
+    
+    if (log_transform_outcome) {
+      y <- exp(y_linear)
+    } else {
+      y <- y_linear
+    }
+    
     data.frame(time = 1:t, x1 = x1, x2 = x2, y = y,
                baseline_val = b0,
                step_effect = b1_step * x1,
@@ -80,31 +103,44 @@ its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NU
                trend_effect = b3_trend * time_var_component,
                error_term = error)
   }
+  
   pb <- txtProgressBar(style = 3, min = 0, max = n.sims)
+  
   for (v in 1:n.sims) {
     setTxtProgressBar(pb, v)
+    
     fake.data.n <- generate_fake_data(t, errormodel, k, b0, b1_step,
                                       include_covariate, b2_covariate, b2_mean, b2_sd, b2_shift_after_k,
-                                      noise_sd, include_trend, b3_trend)
+                                      noise_sd, include_trend, b3_trend, log_transform_outcome)
+    
     if (v == n.sims) {
       last_fake_data <- fake.data.n
     }
-if (trend_model_method == "xreg") {
-  xreg_components$time <- as.numeric(fake.data.n$time)
-} else if (trend_model_method == "differencing") {
-  if (sim_order[2] == 0) {
-    sim_order[2] <- 1
-  }
-}
+    
+    sim_order <- errormodel$order
+    
+    xreg_components <- list(iv = as.numeric(fake.data.n$x1))
+    
+    if (model_covariate) {
+      xreg_components$covariate <- as.numeric(fake.data.n$x2)
     }
+    
     if (trend_model_method == "xreg") {
       xreg_components$time <- as.numeric(fake.data.n$time)
     } else if (trend_model_method == "differencing") {
-      sim_order[2] <- 1
+      if (sim_order[2] == 0) {
+        sim_order[2] <- 1
+      }
     }
+    
     xreg_matrix <- if (length(xreg_components) > 0) do.call(cbind, xreg_components) else NULL
+    
+    dv <- fake.data.n$y
+    if (log_transform_outcome) {
+      dv <- log(dv)
+    }
+    
     model1 <- tryCatch({
-      dv <- fake.data.n$y
       arima(dv,
             order = sim_order,
             xreg = xreg_matrix,
@@ -114,10 +150,12 @@ if (trend_model_method == "xreg") {
       errors_occurred <<- c(errors_occurred, paste("Simulation", v, "error:", e$message))
       return(NULL)
     })
+    
     if (!is.null(model1)) {
       coef_names <- names(model1$coef)
       coef_values <- model1$coef
       var_coef <- model1$var.coef
+      
       if ("iv" %in% coef_names) {
         theta[v] <- coef_values["iv"]
         suppressWarnings(
@@ -126,9 +164,11 @@ if (trend_model_method == "xreg") {
         pvalue[v] <- pval_iv
         signif[v] <- pvalue[v] < 0.05
       }
+      
       if (model_covariate && "covariate" %in% coef_names) {
         b2_estimates[v] <- coef_values["covariate"]
       }
+      
       if (trend_model_method == "xreg" && "time" %in% coef_names) {
         time_coefficients[v] <- coef_values["time"]
       } else if (trend_model_method == "differencing") {
@@ -138,7 +178,9 @@ if (trend_model_method == "xreg") {
       }
     }
   }
+  
   close(pb)
+  
   results <- list(
     power = mean(signif, na.rm = TRUE),
     beta_iv = mean(theta, na.rm = TRUE),
@@ -148,5 +190,6 @@ if (trend_model_method == "xreg") {
     last_sim_data = last_fake_data,
     errors = errors_occurred
   )
+  
   return(results)
 }
