@@ -14,49 +14,49 @@
 #' Where:
 #' * $Y_t$ is the outcome at time $t$.
 #' * $b_0$ is the intercept.
-#' * $X_{1t}$ is the intervention indicator variable, coded as 0 for $t \le k$ and 1 for $t > k$[cite: 65].
-#' * $b_{1step}$ represents the immediate and sustained change in the outcome after the intervention[cite: 66].
-#' * $X_{2t}$ is the simulated continuous covariate, built from an AR(1) process with an AR coefficient of 0.5, capturing its natural autocorrelation and random fluctuations. An optional linear shift ($b_{2shift\_after\_k}$) is added for $t > k$, allowing it to act as a time-varying confounder[cite: 67, 68].
-#' * $Time_t$ is the linear time trend[cite: 69].
-#'   - If `trend_type` = "deterministic", $Time_t$ is coded as $1, 2, \dots, t$[cite: 69].
-#'   - If `trend_type` = "stochastic", $Time_t$ is generated as a cumulative sum of random innovations with standard deviation `stochastic_trend_sd` (i.e., a random walk)[cite: 71]. In this case, $b_3$ is implicitly 1[cite: 72].
-#' * $Error_t$ represents the random error component, generated using the `arima.sim` function to ensure proper autocorrelation structures based on the `errormodel` and `noise_sd`[cite: 73]. A burn-in period (set to 80% of t in the innovation generation) is used to allow the model to stabilize[cite: 74, 75].
+#' * $X_{1t}$ is the intervention indicator variable, coded as 0 for $t \le k$ and 1 for $t > k$
+#' * $b_{1step}$ represents the immediate and sustained change in the outcome after the intervention
+#' * $X_{2t}$ is the simulated continuous covariate, built from an AR(1) process with an AR coefficient of 0.5, capturing its natural autocorrelation and random fluctuations. An optional linear shift ($b_{2shift\_after\_k}$) is added for $t > k$, allowing it to act as a time-varying confounder
+#' * $Time_t$ is the linear time trend
+#'   - If `trend_type` = "deterministic", $Time_t$ is coded as $1, 2, \dots, t$
+#'   - If `trend_type` = "stochastic", $Time_t$ is generated as a cumulative sum of random innovations with standard deviation `stochastic_trend_sd` (i.e., a random walk). In this case, $b_3$ is implicitly 1
+#' * $Error_t$ represents the random error component, generated using the `arima.sim` function to ensure proper autocorrelation structures based on the `errormodel` and `noise_sd`. A burn-in period (set to 80% of t in the innovation generation) is used to allow the model to stabilise
 #'
 #' The simulation process involves repeating data generation and ARIMAX model analysis
 #' (using `arima()` with `xreg`) for `n.sims` times. The intervention effect coefficient
-#' is extracted, and its statistical significance (p-value < 0.05) is recorded[cite: 91].
+#' is extracted, and its statistical significance (p-value < 0.05) is recorded
 #'
-#' @param t An integer specifying the total number of time points in the series (e.g., t=100 for 100 months of data collection)[cite: 6].
-#' @param errormodel A list defining the ARIMA error structure for the simulated data. Must contain 'order = c(p, d, q)'. Optionally contains 'ar' (numeric vector of AR coefficients) and 'ma' (numeric vector of MA coefficients)[cite: 31, 32, 33, 34, 35, 36, 37, 38, 39].
-#' @param period An integer indicating the frequency of observations per unit time (e.g., period = 12 for monthly data)[cite: 10, 11].
-#' @param k An integer specifying the number of pre-intervention time points. The intervention starts at time point `k+1`. Must be an integer < t-1 (inclusive)[cite: 7, 8, 9].
-#' @param b0 The starting value or average level of the dependent variable before any intervention or trend effects[cite: 13, 14].
-#' @param b1_step The numeric value reflecting the true effect size for the immediate and sustained impact of the intervention[cite: 14, 15, 16].
-#' @param b2_covariate The numeric value representing the true effect size (beta coefficient) for the continuous numeric covariate[cite: 20, 21].
-#' @param b2_mean The mean value for the simulated continuous covariate, generated from a normal distribution[cite: 22].
-#' @param b2_sd The standard deviation for the simulated continuous covariate[cite: 23].
-#' @param b2_shift_after_k Represents a deterministic change in the mean of the covariate after the intervention time point (k)[cite: 24, 25, 26].
-#' @param noise_sd The standard deviation of the innovations (white noise) that drive the ARIMA error process. A greater `noise_sd` makes it harder to detect an underlying association[cite: 28, 29, 30].
-#' @param b3_trend The numeric value representing the true coefficient for a deterministic linear time trend. Set to 0 if no underlying deterministic linear trend is assumed[cite: 17, 18].
-#' @param include_covariate Logical value (TRUE or FALSE). If TRUE, a stochastic, time-varying covariate (X2) is simulated and included in the true data-generating process[cite: 46, 47].
-#' @param model_covariate Logical value (TRUE or FALSE). If TRUE, the simulated covariate is included as an exogenous regressor in the fitted ARIMA model[cite: 48, 49].
-#' @param include_trend Logical value (TRUE or FALSE). If TRUE, a linear time trend is simulated and included in the true data-generating process[cite: 50, 51].
-#' @param trend_model_method Character string specifying how the time trend is modelled in the regression. Options are: "none", "xreg", or "differencing"[cite: 54, 55, 56, 57].
-#' @param trend_type Character string specifying the type of trend in the DGP. Options are: "deterministic" or "stochastic"[cite: 52, 53].
-#' @param stochastic_trend_sd Determines the volatility of the random shocks that drive the stochastic trend. Relevant if `include_trend = TRUE` and `trend_type = "stochastic"`[cite: 40, 41].
-#' @param log_transform_outcome Logical value (TRUE or FALSE). If TRUE, the outcome variable will be log-transformed before fitting the ARIMA model[cite: 43, 44, 45].
-#' @param seed An optional integer argument to set the initial state of the random number generator for reproducibility[cite: 58, 59].
-#' @param n.sims The number of Monte Carlo simulations to run. A higher number provides a more stable estimate of power[cite: 60, 61].
+#' @param t An integer specifying the total number of time points in the series (e.g., t=100 for 100 months of data collection)
+#' @param errormodel A list defining the ARIMA error structure for the simulated data. Must contain 'order = c(p, d, q)'. Optionally contains 'ar' (numeric vector of AR coefficients) and 'ma' (numeric vector of MA coefficients)
+#' @param period An integer indicating the frequency of observations per unit time (e.g., period = 12 for monthly data)
+#' @param k An integer specifying the number of pre-intervention time points. The intervention starts at time point `k+1`. Must be an integer < t-1 (inclusive)
+#' @param b0 The starting value or average level of the dependent variable before any intervention or trend effects
+#' @param b1_step The numeric value reflecting the true effect size for the immediate and sustained impact of the intervention
+#' @param b2_covariate The numeric value representing the true effect size (beta coefficient) for the continuous numeric covariate[c
+#' @param b2_mean The mean value for the simulated continuous covariate, generated from a normal distribution
+#' @param b2_sd The standard deviation for the simulated continuous covariate
+#' @param b2_shift_after_k Represents a deterministic change in the mean of the covariate after the intervention time point (k)
+#' @param noise_sd The standard deviation of the innovations (white noise) that drive the ARIMA error process. A greater `noise_sd` makes it harder to detect an underlying association
+#' @param b3_trend The numeric value representing the true coefficient for a deterministic linear time trend. Set to 0 if no underlying deterministic linear trend is assumed
+#' @param include_covariate Logical value (TRUE or FALSE). If TRUE, a stochastic, time-varying covariate (X2) is simulated and included in the true data-generating process
+#' @param model_covariate Logical value (TRUE or FALSE). If TRUE, the simulated covariate is included as an exogenous regressor in the fitted ARIMA model[
+#' @param include_trend Logical value (TRUE or FALSE). If TRUE, a linear time trend is simulated and included in the true data-generating process
+#' @param trend_model_method Character string specifying how the time trend is modelled in the regression. Options are: "none", "xreg", or "differencing"
+#' @param trend_type Character string specifying the type of trend in the DGP. Options are: "deterministic" or "stochastic"
+#' @param stochastic_trend_sd Determines the volatility of the random shocks that drive the stochastic trend. Relevant if `include_trend = TRUE` and `trend_type = "stochastic"`
+#' @param log_transform_outcome Logical value (TRUE or FALSE). If TRUE, the outcome variable will be log-transformed before fitting the ARIMA model
+#' @param seed An optional integer argument to set the initial state of the random number generator for reproducibility
+#' @param n.sims The number of Monte Carlo simulations to run. A higher number provides a more stable estimate of power
 #'
 #' @return A list containing the following key results:
-#' \item{power}{The proportion of simulations where the intervention effect was statistically significant (p < 0.05)[cite: 97, 98].}
-#' \item{beta_iv}{The average estimated coefficient value for the intervention effect across all simulations[cite: 99].}
-#' \item{beta_covariate}{The average estimated coefficient value for the covariate across all simulations[cite: 100].}
-#' \item{beta_time}{The average estimated coefficient value for the time trend across all simulations. Will be NA if the trend was modelled using differencing[cite: 101, 102].}
-#' \item{pvalue}{The average p-value for the intervention coefficient across all simulations[cite: 98].}
-#' \item{mean_simulated_stochastic_trend_magnitude}{The average value of the simulated stochastic trend component at the last time point (t) across all simulations[cite: 103, 104].}
-#' \item{last_sim_data}{The data frame from the last simulation run, useful for inspecting the generated data and fitting visually[cite: 105].}
-#' \item{errors}{A vector containing any error messages encountered during the simulation process[cite: 106].}
+#' \item{power}{The proportion of simulations where the intervention effect was statistically significant (p < 0.05)}
+#' \item{beta_iv}{The average estimated coefficient value for the intervention effect across all simulations}
+#' \item{beta_covariate}{The average estimated coefficient value for the covariate across all simulations.}
+#' \item{beta_time}{The average estimated coefficient value for the time trend across all simulations. Will be NA if the trend was modelled using differencing.}
+#' \item{pvalue}{The average p-value for the intervention coefficient across all simulations.}
+#' \item{mean_simulated_stochastic_trend_magnitude}{The average value of the simulated stochastic trend component at the last time point (t) across all simulations.}
+#' \item{last_sim_data}{The data frame from the last simulation run, useful for inspecting the generated data and fitting visually.}
+#' \item{errors}{A vector containing any error messages encountered during the simulation process.}
 #'
 #' @examples
 #' # Example usage:
