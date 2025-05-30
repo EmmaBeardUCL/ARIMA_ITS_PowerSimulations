@@ -5,13 +5,53 @@ its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NU
                                 include_covariate = FALSE,
                                 model_covariate = FALSE,
                                 include_trend = FALSE,
-                                trend_model_method = "none", # "none", "xreg", "differencing"
-                                trend_type = "deterministic", # "deterministic" or "stochastic"
+                                trend_model_method = "none", 
+                                trend_type = "deterministic",
                                 stochastic_trend_sd = 0.1, 
                                 log_transform_outcome = FALSE,
                                 seed = NULL, n.sims) {
   
-  if (!is.numeric(k) || length(k) != 1 || k < 0 || k >= t) {
+  # --- Function Parameters ---
+  # t: Core time series parameter. An integer specifying the total number of time points in the series (e.g., t=100 for 100 months of data collection).
+  # errormodel: Autocorrelation model. A list defining the ARIMA error structure for the simulated data.
+  #   Must contain 'order = c(p, d, q)', where:
+  #     p: number of autoregressive (AR) terms.
+  #     d: differencing order (typically 0 for stationary series).
+  #     q: number of moving average (MA) terms.
+  #   Optionally contains 'ar' (a numeric vector of AR coefficients) and 'ma' (a numeric vector of MA coefficients).
+  # period: Period of data collection. An integer indicating the frequency of observations per unit time (e.g., period = 12 for monthly data).
+  # k: Intervention time point. An integer specifying the number of pre-intervention time points.
+  #   The intervention (step change) is modelled as occurring starting at time point k+1.
+  #   This value must be an integer < t-1 (inclusive).
+  # b0: Intercept. The starting value or average level of your dependent variable before any intervention or trend effects.
+  # b1_step: Intervention effect size. The numeric value reflecting the true effect size for the immediate and sustained impact of the intervention.
+  #   Represents the immediate and sustained change in the outcome after the intervention.
+  # b2_covariate: Covariate effect size. The numeric value representing the true effect size (beta coefficient) for the continuous numeric covariate.
+  #   Set to 0 if no numeric covariate is being modelled.
+  # b2_mean: Covariate mean. The mean value for the simulated continuous covariate, generated from a normal distribution.
+  # b2_sd: Covariate standard deviation. The standard deviation for the simulated continuous covariate.
+  # b2_shift_after_k: Covariate shift after intervention. Represents a deterministic change in the mean of the covariate after the intervention time point (k).
+  #   This shift is added to the covariate's baseline and stochastic component from time k+1 onwards.
+  # noise_sd: Standard deviation of white noise. The standard deviation of the innovations (white noise) that drive the ARIMA error process.
+  #   A greater 'noise_sd' makes it harder to detect an underlying association.
+  # b3_trend: Deterministic Trend Coefficient. The numeric value representing the true coefficient for a deterministic linear time trend.
+  #   Should be set to 0 if no underlying deterministic linear trend is assumed.
+  # include_covariate: Logical value (TRUE or FALSE). If TRUE, a stochastic, time-varying covariate (X2) is simulated and included in the true data-generating process.
+  # model_covariate: Logical value (TRUE or FALSE). If TRUE, the simulated covariate is included as an exogenous regressor in the fitted ARIMA model.
+  # include_trend: Logical value (TRUE or FALSE). If TRUE, a linear time trend is simulated and included in the true data-generating process.
+  # trend_model_method: Character string specifying how the time trend is modelled in the regression.
+  #   Options are: "none" (not modelled), "xreg" (included as exogenous regressor), or "differencing" (ARIMA model's differencing order d is set to 1).
+  # trend_type: Character string specifying the type of trend in the Data Generating Process (DGP).
+  #   Options are: "deterministic" (predictable, non-random function of time) or "stochastic" (changes randomly over time, often a random walk).
+  # stochastic_trend_sd: Stochastic Trend Standard Deviation. Determines the volatility of the random shocks that drive the stochastic trend.
+  #   Relevant if 'include_trend = TRUE' and 'trend_type = "stochastic"'.
+  # log_transform_outcome: Logical value (TRUE or FALSE). If TRUE, the outcome variable will be log-transformed before fitting the ARIMA model.
+  # seed: Random seed. An optional integer argument to set the initial state of the random number generator for reproducibility.
+  # n.sims: Number of simulations. The number of Monte Carlo simulations to run. A higher number provides a more stable estimate of power.
+  
+  
+  
+   if (!is.numeric(k) || length(k) != 1 || k < 0 || k >= t) {
     stop("Parameter 'k' (number of pre-intervention time points) must be a single integer between 0 and t-1 (inclusive).")
   }
   if (k %% 1 != 0) {
@@ -23,7 +63,7 @@ its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NU
   }
   
   if (trend_type == "stochastic" && stochastic_trend_sd < 0) {
-    stop("If 'trend_type' is 'stochastic', 'stochastic_trend_sd' must be a non-negative numeric value.")
+    stop("If 'include_trend' is TRUE and 'trend_type' is 'stochastic', 'stochastic_trend_sd' must be a non-negative numeric value.")
   }
   
   if (!is.null(seed)) {
@@ -35,7 +75,7 @@ its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NU
   pvalue <- rep(NA, n.sims)
   b2_estimates <- rep(NA, n.sims)
   time_coefficients <- rep(NA, n.sims)
-  trend_effect_simulated <- rep(NA, n.sims) # To store the actual trend effect for stochastic trend
+  trend_effect_simulated <- rep(NA, n.sims) 
   
   last_fake_data <- NULL
   
@@ -55,8 +95,7 @@ its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NU
     check_order_validity(errormodel$order[1], errormodel$order[2], errormodel$order[3])
     
     x1 <- c(rep(0, k), rep(1, t - k))
-    
-    time_var_component <- rep(0, t)
+     time_var_component <- rep(0, t)
     
     if (include_trend) {
       if (trend_type == "deterministic") {
@@ -88,8 +127,9 @@ its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NU
     if (all(errormodel$order == c(0,0,0)) && (is.null(errormodel$ar) || all(errormodel$ar == 0)) && (is.null(errormodel$ma) || all(errormodel$ma == 0))) {
       error <- rnorm(t, sd = noise_sd)
     } else {
-      e_innov <- rnorm(t + t * 0.8, sd = noise_sd)
-      error_full <- arima.sim(model = arima_model_spec, n = t + t * 0.8, innov = e_innov)
+      buffer <- 5 * max(errormodel$order[1], errormodel$order[3])
+      e_innov <- rnorm(t + buffer, sd = noise_sd)
+      error_full <- arima.sim(model = arima_model_spec, n = t + buffer, innov = e_innov)
       error <- tail(error_full, t)
     }
     
@@ -142,15 +182,11 @@ its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NU
       xreg_components$covariate <- as.numeric(fake.data.n$x2)
     }
     
-    # Modeling the trend in the ARIMA function
     if (include_trend) {
       if (trend_model_method == "xreg") {
-        # If deterministic, we model a simple linear time component
-        # If stochastic, we also model a linear time component, assuming it's an approximation
         xreg_components$time <- as.numeric(fake.data.n$time)
       } else if (trend_model_method == "differencing") {
-        # Differencing handles both deterministic and stochastic trends that are integrated processes
-        if (sim_order[2] == 0) { # Only apply differencing if not already specified
+        if (sim_order[2] == 0) { 
           sim_order[2] <- 1
         }
       }
@@ -196,15 +232,13 @@ its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NU
       if (include_trend && trend_model_method == "xreg" && "time" %in% coef_names) {
         time_coefficients[v] <- coef_values["time"]
       } else if (include_trend && trend_model_method == "differencing") {
-        time_coefficients[v] <- NA # Trend is handled by differencing, no explicit coefficient
+        time_coefficients[v] <- NA 
       } else {
         time_coefficients[v] <- NA
       }
       
       if (include_trend && trend_type == "stochastic") {
-        # Store the magnitude of the actual stochastic trend for analysis if needed
-        # This will be the value of the last point in the simulated trend, or max(abs(trend))
-        trend_effect_simulated[v] <- fake.data.n$trend_effect[t] # or some other summary
+        trend_effect_simulated[v] <- fake.data.n$trend_effect[t] 
       }
     }
   }
@@ -215,9 +249,9 @@ its_power_simulator <- function(t, errormodel = list(order = c(0, 0, 0), ar = NU
     power = mean(signif, na.rm = TRUE),
     beta_iv = mean(theta, na.rm = TRUE),
     beta_covariate = mean(b2_estimates, na.rm = TRUE),
-    beta_time = mean(time_coefficients, na.rm = TRUE), # This will be NA if differencing
+    beta_time = mean(time_coefficients, na.rm = TRUE), 
     pvalue = mean(pvalue, na.rm = TRUE),
-    simulated_stochastic_trend_magnitude = mean(trend_effect_simulated, na.rm = TRUE), # Mean of the simulated trend magnitudes
+    simulated_stochastic_trend_magnitude = mean(trend_effect_simulated, na.rm = TRUE), 
     last_sim_data = last_fake_data,
     errors = errors_occurred
   )
